@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .categories import normalize_category
 from .categorization import build_categorization_prompt
+from .descriptions import clean_description
 from .ingestion import load_transactions
 from .llm import LLMClient
 from .models import Transaction
@@ -17,8 +18,9 @@ logger = logging.getLogger(__name__)
 class ToolLoopFinanceAgent:
     """Run the finance report through model-selected tools."""
 
-    def __init__(self, llm: LLMClient, step_limit: int = 8):
+    def __init__(self, llm: LLMClient, step_limit: int = 8, trace: str | None = None):
         self.llm = llm
+        self.trace = trace
         self.step_limit = step_limit
         self.observations: list[str] = []
         self.warnings: list[str] = []
@@ -28,6 +30,15 @@ class ToolLoopFinanceAgent:
     def run(self, data_dir: str | Path, output_path: str | Path) -> dict:
         logger.info("[load] Reading CSV files from %s", data_dir)
         transactions = load_transactions(data_dir)
+        if self.trace and not any(self.trace.casefold() in tx.description.casefold() for tx in transactions):
+            logger.info("[trace] No retained transactions match %r", self.trace)
+        for tx in transactions:
+            self._trace_transaction(tx, "source", tx.raw)
+            self._trace_transaction(tx, "normalized", {
+                "date": tx.date, "amount": str(tx.amount), "category": tx.category,
+                "category_source": tx.category_source, "transaction_type": tx.transaction_type,
+                "next": "LLM categorization if selected" if not tx.category else "Already categorized; skips LLM categorization",
+            })
         self.observations.append(f"inspect_data: {self._inspect_data(transactions)}")
         logger.info(
             "[inspect] Loaded %d transactions after overlap matching; %d missing categories",
@@ -113,6 +124,11 @@ class ToolLoopFinanceAgent:
             return "categorized=0; missing_categories=0"
 
         logger.info("[categorize] Requesting labels for %d transactions", len(missing))
+        for index, tx in enumerate(missing):
+            self._trace_transaction(tx, "categorization input", {
+                "batch_id": index, "cleaned_description": clean_description(tx.description),
+                "amount": str(tx.amount),
+            })
         prompt = build_categorization_prompt(transactions)
         response = _category_mapping(_parse_json(self.llm.complete(prompt)))
 
@@ -122,6 +138,10 @@ class ToolLoopFinanceAgent:
             tx.category_source = "llm" if category else "default"
             if not category:
                 tx.notes.append("llm_category_invalid_defaulted_other")
+            self._trace_transaction(tx, "categorization result", {
+                "returned_label": response.get(str(index)), "category": tx.category,
+                "category_source": tx.category_source,
+            })
 
         remaining = sum(1 for tx in transactions if not tx.category)
         defaulted = sum(tx.category_source == "default" for tx in missing)
@@ -155,10 +175,22 @@ class ToolLoopFinanceAgent:
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        for tx in transactions:
+            self._trace_transaction(tx, "report", tx.as_report_dict())
+            self._trace_transaction(tx, "contribution to final totals", {
+                "income": str(max(tx.amount, 0)), "expenses": str(max(-tx.amount, 0)),
+                "net": str(tx.amount), "category": tx.category,
+                "signed_category_amount": str(tx.amount),
+            })
         for warning in warnings:
             logger.info("[warning] %s", warning)
         logger.info("[done] Report saved to %s (%d warnings)", path, len(warnings))
         return report
+
+    def _trace_transaction(self, tx: Transaction, stage: str, details: dict) -> None:
+        if self.trace and self.trace.casefold() in tx.description.casefold():
+            logger.info("[trace | %s | %s | %s] %s: %s",
+                        tx.source_file, tx.date, tx.description, stage, json.dumps(details))
 
 
 _TOOL_DESCRIPTIONS = {

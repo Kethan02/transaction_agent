@@ -60,7 +60,7 @@ unnecessary frameworks, retries, or layers of fallback logic.
    additional model call.
 
 8. **Make the result reproducible.** I recorded the real Ollama prompts and
-   responses and added offline replay. The 19 offline tests cover parsing,
+   responses and added offline replay. Offline tests cover parsing,
    cleanup, categories, arithmetic, and failure paths. The refreshed recording
    contains three tool choices and one categorization response; offline replay
    reproduces the current report exactly.

@@ -50,6 +50,30 @@ OLLAMA_MODEL=llama3.1:8b python -m finance_agent \
 python -m json.tool report.json
 ```
 
+## Trace a Transaction
+
+```bash
+python -m finance_agent --data sample_data --out /tmp/trace-report.json --replay recordings/tool_loop_llm_responses.json --trace SAFEWAY
+```
+
+Uses saved Ollama responses without calling the model. Prints the preserved CSV
+row, normalized fields, cleaned categorization input, category result, and final
+report contribution. Replace `SAFEWAY` with any description text; matching is
+case-insensitive and traces all matching retained transactions. The full agent
+still runs. `--trace` also works with live model runs.
+
+## Demonstrate Bad Model Output
+
+```bash
+python -m finance_agent --data sample_data --out /tmp/fallback-report.json --demo-bad-response --trace SAFEWAY
+```
+
+Injects `this is not json` as the first tool response and runs the actual
+fallback path. Shows remaining categories defaulting to `Other`, report
+warnings, and successful report writing. This demo calls no model, reads no
+recording, and writes no recording. Both commands save reports to `/tmp`,
+leaving the submission report unchanged.
+
 ## Time Spent
 
 I spent around 7-8 hours on this.
