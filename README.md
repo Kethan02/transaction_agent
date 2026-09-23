@@ -174,11 +174,3 @@ documentation. I directed these changes and tradeoffs:
 - Rejected an `include_in_totals` flag: all signed account movements count,
   including transfers and refunds. I preserved raw rows and used documented
   cleanup rules while keeping arithmetic entirely in code.
-
-## Walkthrough Notes
-
-- Run the CLI in replay mode and inspect the generated `report.json`.
-- Trace `Refund AMAZON.COM` from CSV parsing through final category and totals.
-- Show `finance_agent/report.py` as the deterministic arithmetic boundary.
-- Make the first model tool response malformed and show the fallback path test.
-- Discuss what a stronger duplicate detector would add with more time.
